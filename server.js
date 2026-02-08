@@ -20,7 +20,7 @@ app.post("/run", async (req, res) => {
     const { taskTitle, taskDescription } = req.body;
 
     const prompt = `
-You are a troubleshooting assistant for the engineering team.
+You are a troubleshooting assistant for the bubble engineering team.
 
 Task Title:
 ${taskTitle}
@@ -33,6 +33,9 @@ Explain:
 2. What workflows are likely involved
 3. What elements may need review
 4. Suggested solution steps
+5. What other workflows, elements and pages could be effected
+
+Keep your responses short and to the point, no fluff. Don't guess, if you don't know something for certain say so and provide level of confidence. 
 `;
 
     const message = await anthropic.messages.create({
