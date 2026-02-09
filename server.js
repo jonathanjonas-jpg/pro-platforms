@@ -259,6 +259,80 @@ app.get("/test-sse-raw", async (req, res) => {
     });
   }
 });
+
+app.get("/test-sse-stream", async (req, res) => {
+  try {
+    const url = process.env.MCP_URL;
+    console.log("Opening SSE stream to:", url);
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+    });
+
+    if (!response.ok) {
+      return res.json({
+        ok: false,
+        status: response.status,
+        body: await response.text()
+      });
+    }
+
+    console.log("Stream opened, reading events...");
+    
+    // Read the stream for 5 seconds and collect events
+    const events = [];
+    const timeout = setTimeout(() => {
+      console.log("Timeout reached");
+    }, 5000);
+
+    const reader = response.body;
+    let buffer = '';
+    
+    try {
+      for await (const chunk of reader) {
+        buffer += chunk.toString();
+        
+        // Parse SSE events (split by double newline)
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop(); // Keep incomplete event in buffer
+        
+        for (const part of parts) {
+          if (part.trim()) {
+            events.push(part);
+            console.log("Received event:", part);
+          }
+        }
+        
+        if (events.length >= 5) break; // Got enough events
+      }
+    } catch (e) {
+      console.log("Stream read ended:", e.message);
+    }
+
+    clearTimeout(timeout);
+
+    res.json({
+      ok: true,
+      message: "Successfully read SSE stream",
+      eventCount: events.length,
+      events: events,
+      remainingBuffer: buffer
+    });
+
+  } catch (error) {
+    console.error("Stream error:", error);
+    res.json({
+      ok: false,
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 //end debug endpoint
 
 // NEW: Agentic loop implementation
