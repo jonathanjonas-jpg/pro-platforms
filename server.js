@@ -113,16 +113,37 @@ app.post("/run", async (req, res) => {
     }
 
     // Many MCP servers accept { query }, but if yours uses different args,
-    // change this object accordingly.
-    const bubbleCtx = await withTimeout(
-      callMcpTool(process.env.MCP_TOOL_NAME, { query: issueText }),
-      60_000
-    );
 
+    // Call this endpoint to see what your MCP tool actually expects
+app.get("/mcp-tools", async (req, res) => {
+  // ... your existing code shows this
+});
+
+let bubbleCtx = null;
+let bubbleCtxError = null;
+
+    // Current: throws error if MCP fails
+const bubbleCtx = await withTimeout(
+  callMcpTool(process.env.MCP_TOOL_NAME, { query: issueText }),
+  60_000
+);
+    
+ } catch (error) {
+  console.error("MCP call failed:", error);
+  bubbleCtxError = error.message;
+}   
     const prompt = `
 You are a troubleshooting assistant for the bubble engineering team.
 
 Use the Buildprint/Bubble context (from MCP) to be specific. If the MCP context does not contain what you need, say so.
+
+${bubbleCtx 
+  ? `Use the Buildprint/Bubble context (from MCP) to be specific.
+
+Buildprint/Bubble Context:
+${JSON.stringify(bubbleCtx, null, 2)}`
+  : `⚠️ Bubble context is unavailable (${bubbleCtxError}). Provide general guidance without specific Bubble app references.`
+}
 
 Task:
 ${issueText}
