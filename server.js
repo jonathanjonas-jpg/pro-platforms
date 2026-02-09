@@ -68,13 +68,106 @@ app.get("/", (req, res) => {
 
 app.get("/mcp-tools", async (req, res) => {
   try {
+    console.log("Attempting MCP connection...");
+    console.log("MCP_URL:", process.env.MCP_URL);
+    console.log("MCP_TOKEN:", process.env.MCP_TOKEN ? "***set***" : "NOT SET");
+    
     const tools = await withTimeout(listMcpTools(), 20_000);
     res.json({ ok: true, tools });
   } catch (error) {
-    console.error("MCP tools error:", error);
-    res.status(500).json({ ok: false, error: error.message || String(error) });
+    console.error("Full MCP error:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({ 
+      ok: false, 
+      error: error.message || String(error),
+      stack: error.stack,
+      url: process.env.MCP_URL,
+      hasToken: !!process.env.MCP_TOKEN
+    });
   }
 });
+
+//Debug Endpoint
+app.get("/debug-mcp", async (req, res) => {
+  try {
+    console.log("=== MCP Debug ===");
+    console.log("MCP_URL:", process.env.MCP_URL);
+    console.log("MCP_TOKEN exists:", !!process.env.MCP_TOKEN);
+    
+    if (!process.env.MCP_URL) {
+      return res.json({ 
+        error: "MCP_URL not set in environment variables" 
+      });
+    }
+
+    // Test URL parsing
+    let url;
+    try {
+      url = new URL(process.env.MCP_URL);
+      console.log("Parsed URL:", {
+        protocol: url.protocol,
+        host: url.host,
+        pathname: url.pathname
+      });
+    } catch (e) {
+      return res.json({ 
+        error: "Invalid MCP_URL format", 
+        details: e.message,
+        url: process.env.MCP_URL
+      });
+    }
+
+    // Try to connect
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { SSEClientTransport } = await import(
+      "@modelcontextprotocol/sdk/client/sse.js"
+    );
+
+    const headers = {};
+    if (process.env.MCP_TOKEN) {
+      headers.Authorization = `Bearer ${process.env.MCP_TOKEN}`;
+    }
+
+    console.log("Creating transport with headers:", Object.keys(headers));
+    const transport = new SSEClientTransport(url, { headers });
+
+    console.log("Creating client...");
+    const client = new Client({ 
+      name: "buildprint-runner", 
+      version: "1.0.0" 
+    });
+
+    console.log("Attempting to connect...");
+    await withTimeout(client.connect(transport), 10_000);
+    
+    console.log("Connected! Listing tools...");
+    const tools = await withTimeout(client.listTools(), 10_000);
+    
+    await client.close();
+    
+    res.json({
+      ok: true,
+      message: "MCP connection successful!",
+      toolCount: tools.tools?.length || 0,
+      toolNames: tools.tools?.map(t => t.name) || []
+    });
+
+  } catch (error) {
+    console.error("Debug error:", error);
+    res.json({
+      ok: false,
+      error: error.message || String(error),
+      errorType: error.constructor.name,
+      stack: error.stack,
+      env: {
+        hasUrl: !!process.env.MCP_URL,
+        hasToken: !!process.env.MCP_TOKEN,
+        url: process.env.MCP_URL
+      }
+    });
+  }
+});
+//end debug endpoint
 
 // NEW: Agentic loop implementation
 app.post("/run", async (req, res) => {
