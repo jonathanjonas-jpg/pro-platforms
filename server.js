@@ -167,6 +167,98 @@ app.get("/debug-mcp", async (req, res) => {
     });
   }
 });
+
+app.get("/test-mcp-reachability", async (req, res) => {
+  try {
+    // Try a simple fetch to the MCP URL
+    const response = await fetch(process.env.MCP_URL, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/event-stream',
+      }
+    });
+
+    const text = await response.text();
+    
+    res.json({
+      ok: true,
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+      bodyPreview: text.substring(0, 500),
+      bodyLength: text.length
+    });
+  } catch (error) {
+    res.json({
+      ok: false,
+      error: error.message,
+      code: error.code,
+      stack: error.stack
+    });
+  }
+});
+
+app.get("/test-sse-raw", async (req, res) => {
+  try {
+    const { default: fetch } = await import('node-fetch');
+    
+    console.log("Testing SSE connection to:", process.env.MCP_URL);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(process.env.MCP_URL, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    console.log("Response status:", response.status);
+    console.log("Response headers:", response.headers.raw());
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.json({
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: errorText
+      });
+    }
+
+    // Try to read first chunk of SSE stream
+    const reader = response.body;
+    let chunk = '';
+    
+    for await (const data of reader) {
+      chunk += data.toString();
+      if (chunk.length > 1000) break; // Just get first bit
+    }
+
+    res.json({
+      ok: true,
+      status: response.status,
+      headers: Object.fromEntries(response.headers.entries()),
+      firstChunk: chunk,
+      message: "SSE stream is accessible"
+    });
+
+  } catch (error) {
+    res.json({
+      ok: false,
+      error: error.message,
+      name: error.name,
+      code: error.code,
+      stack: error.stack
+    });
+  }
+});
 //end debug endpoint
 
 // NEW: Agentic loop implementation
